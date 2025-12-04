@@ -1,0 +1,53 @@
+#!/bin/bash
+set -e
+
+mkdir -p /var/run/casaos
+
+# Enable services at boot - try multiple methods
+# Services in dependency order: message-bus -> gateway -> user-service -> local-storage -> app-management -> casaos
+SERVICES_IN_ORDER="casaos-message-bus casaos-gateway casaos-user-service casaos-local-storage casaos-app-management casaos"
+SEQ_NUM=20
+
+for service in $SERVICES_IN_ORDER; do
+    if [ -f "/etc/init.d/$service" ]; then
+        if command -v update-rc.d >/dev/null 2>&1; then
+            update-rc.d "$service" defaults $SEQ_NUM
+        elif command -v insserv >/dev/null 2>&1; then
+            insserv "$service"
+        elif command -v chkconfig >/dev/null 2>&1; then
+            chkconfig "$service" on
+        else
+            # Manual LSB init script registration with proper sequence numbers
+            for level in 2 3 4 5; do
+                ln -sf /etc/init.d/"$service" /etc/rc${level}.d/S${SEQ_NUM}"$service" 2>/dev/null || true
+            done
+            for level in 0 1 6; do
+                ln -sf /etc/init.d/"$service" /etc/rc${level}.d/K$((100-SEQ_NUM))"$service" 2>/dev/null || true
+            done
+        fi
+        SEQ_NUM=$((SEQ_NUM + 1))
+    fi
+done
+
+# Start services in dependency order
+echo "Starting CasaOS services..."
+for service in $SERVICES_IN_ORDER; do
+    if [ -f "/etc/init.d/$service" ]; then
+        echo "Starting $service..."
+        /etc/init.d/"$service" start || true
+        # Give message-bus extra time to fully initialize
+        if [ "$service" = "casaos-message-bus" ]; then
+            echo "Waiting for message bus to initialize..."
+            sleep 5
+        else
+            sleep 3
+        fi
+    fi
+done
+
+echo ""
+echo "CasaOS sysvinit installation complete!"
+echo "Services should now be running and will auto-start on boot."
+echo "Access the web interface at http://localhost"
+
+exit 0

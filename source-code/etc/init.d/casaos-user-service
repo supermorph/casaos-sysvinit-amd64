@@ -1,0 +1,75 @@
+#!/bin/bash
+### BEGIN INIT INFO
+# Provides:          casaos-user-service
+# Required-Start:    $remote_fs $syslog
+# Required-Stop:     $remote_fs $syslog
+# Default-Start:     2 3 4 5
+# Default-Stop:      0 1 6
+# Short-Description: Start CasaOS User Service at boot time
+# Description:       Enable CasaOS User Service.
+### END INIT INFO
+
+SERVICE_NAME="casaos-user-service"
+EXEC_START="/usr/bin/casaos-user-service -c /etc/casaos/user-service.conf"
+PID_FILE="/var/run/casaos/user-service.pid"
+
+start() {
+    echo "Starting $SERVICE_NAME..."
+    if [ -f "$PID_FILE" ]; then
+        if ps -p "$(cat $PID_FILE)" > /dev/null 2>&1; then
+            echo "$SERVICE_NAME is already running."
+            return 1
+        else
+            rm -f "$PID_FILE"
+        fi
+    fi
+    mkdir -p /var/run/casaos
+    $EXEC_START > /dev/null 2>&1 &
+    echo $! > "$PID_FILE"
+    echo "$SERVICE_NAME started."
+}
+
+stop() {
+    echo "Stopping $SERVICE_NAME..."
+    if [ ! -f "$PID_FILE" ]; then
+        echo "$SERVICE_NAME is not running."
+        exit 1
+    fi
+    kill "$(cat $PID_FILE)"
+    rm -f "$PID_FILE"
+    echo "$SERVICE_NAME stopped."
+}
+
+restart() {
+    stop
+    start
+}
+
+status() {
+    if [ -f "$PID_FILE" ]; then
+        echo "$SERVICE_NAME is running (PID: $(cat $PID_FILE))."
+    else
+        echo "$SERVICE_NAME is not running."
+    fi
+}
+
+case "$1" in
+    start)
+        start
+        ;;
+    stop)
+        stop
+        ;;
+    restart)
+        restart
+        ;;
+    status)
+        status
+        ;;
+    *)
+        echo "Usage: $0 {start|stop|restart|status}"
+        exit 1
+        ;;
+esac
+
+exit 0

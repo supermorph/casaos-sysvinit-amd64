@@ -1,0 +1,118 @@
+#!/bin/bash
+### BEGIN INIT INFO
+# Provides:          casaos
+# Required-Start:    $remote_fs $syslog casaos-message-bus casaos-gateway
+# Required-Stop:     $remote_fs $syslog
+# Default-Start:     2 3 4 5
+# Default-Stop:      0 1 6
+# Short-Description: CasaOS Main Service
+# Description:       CasaOS Main Service
+### END INIT INFO
+
+SERVICE_NAME="casaos"
+EXEC_START="/usr/bin/casaos -c /etc/casaos/casaos.conf"
+PID_FILE="/var/run/casaos/casaos.pid"
+
+start() {
+    echo "Starting $SERVICE_NAME..."
+    
+    # Start required dependencies in order
+    for dep in casaos-message-bus casaos-gateway casaos-user-service casaos-local-storage casaos-app-management; do
+        if [ -f "/etc/init.d/$dep" ]; then
+            if ! /etc/init.d/$dep status >/dev/null 2>&1; then
+                echo "Starting dependency: $dep"
+                /etc/init.d/$dep start
+                sleep 2
+            fi
+        fi
+    done
+    
+    if [ -f "$PID_FILE" ]; then
+        if ps -p "$(cat $PID_FILE)" > /dev/null 2>&1; then
+            echo "$SERVICE_NAME is already running."
+            return 1
+        else
+            rm -f "$PID_FILE"
+        fi
+    fi
+    
+    # Ensure the runtime directory exists
+    mkdir -p /var/run/casaos
+    
+    # Start the service in background
+    $EXEC_START > /dev/null 2>&1 &
+    echo $! > "$PID_FILE"
+    echo "$SERVICE_NAME started."
+}
+
+stop() {
+    echo "Stopping $SERVICE_NAME..."
+    if [ ! -f "$PID_FILE" ]; then
+        echo "$SERVICE_NAME is not running."
+        return 1
+    fi
+    
+    PID=$(cat "$PID_FILE")
+    if ps -p "$PID" > /dev/null 2>&1; then
+        kill "$PID"
+        
+        # Wait for process to stop
+        for i in {1..10}; do
+            if ! ps -p "$PID" > /dev/null 2>&1; then
+                break
+            fi
+            sleep 1
+        done
+        
+        # Force kill if still running
+        if ps -p "$PID" > /dev/null 2>&1; then
+            kill -9 "$PID"
+        fi
+    fi
+    
+    rm -f "$PID_FILE"
+    echo "$SERVICE_NAME stopped."
+}
+
+restart() {
+    stop
+    sleep 2
+    start
+}
+
+status() {
+    if [ -f "$PID_FILE" ]; then
+        PID=$(cat "$PID_FILE")
+        if ps -p "$PID" > /dev/null 2>&1; then
+            echo "$SERVICE_NAME is running (PID: $PID)."
+            return 0
+        else
+            echo "$SERVICE_NAME is not running (stale PID file)."
+            return 1
+        fi
+    else
+        echo "$SERVICE_NAME is not running."
+        return 3
+    fi
+}
+
+case "$1" in
+    start)
+        start
+        ;;
+    stop)
+        stop
+        ;;
+    restart)
+        restart
+        ;;
+    status)
+        status
+        ;;
+    *)
+        echo "Usage: $0 {start|stop|restart|status}"
+        exit 1
+        ;;
+esac
+
+exit 0

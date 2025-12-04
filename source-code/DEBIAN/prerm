@@ -1,0 +1,8 @@
+#!/bin/bash
+set -e
+
+if [ -f "/etc/init.d/casaos" ]; then
+    /etc/init.d/casaos stop 2>/dev/null || true
+fi
+
+exit 0
